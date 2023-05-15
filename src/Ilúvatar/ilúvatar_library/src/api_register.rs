@@ -17,11 +17,11 @@ pub struct RegisterWorker {
 }
 
 /// Send worker details to the load balancer to register 
-pub async fn register_worker(name: &String, communication_method: CommunicationMethod, host: &String, port: Port, memory: i64, cpus: u32, loab_balancer_url: &String, tid: &TransactionId, compute: Compute, isolation: Isolation, gpus: u32) -> Result<()> {
+pub async fn register_worker(name: &str, communication_method: CommunicationMethod, host: &str, port: Port, memory: i64, cpus: u32, loab_balancer_url: &String, tid: &TransactionId, compute: Compute, isolation: Isolation, gpus: u32) -> Result<()> {
   let req = RegisterWorker {
-    name: name.clone(),
-    host: host.clone(),
-    communication_method: communication_method.clone(),
+    name: name.to_owned(),
+    host: host.to_owned(),
+    communication_method,
     port, memory, cpus, compute, isolation, gpus,
   };
   let client = reqwest::Client::new();

@@ -37,9 +37,9 @@ pub struct LoggingConfig {
   pub span_energy_monitoring: bool,
 }
 
-fn str_to_span(spanning: &String) -> FmtSpan {
+fn str_to_span(spanning: &str) -> FmtSpan {
   let mut fmt = FmtSpan::NONE;
-  for choice in spanning.split("+") {
+  for choice in spanning.split('+') {
     fmt |= match choice {
       "NEW" => FmtSpan::NEW,
       "ENTER" => FmtSpan::ENTER,
@@ -54,7 +54,7 @@ fn str_to_span(spanning: &String) -> FmtSpan {
   fmt
 }
 
-pub fn start_tracing(config: Arc<LoggingConfig>, worker_name: &String, tid: &TransactionId) -> Result<impl Drop> {
+pub fn start_tracing(config: Arc<LoggingConfig>, worker_name: &str, tid: &TransactionId) -> Result<impl Drop> {
   #[allow(dyn_drop)]
   let mut drops:Vec<Box<dyn Drop>> = Vec::new();
   let (non_blocking, _guard) = match config.directory.as_ref() {
@@ -62,7 +62,7 @@ pub fn start_tracing(config: Arc<LoggingConfig>, worker_name: &String, tid: &Tra
     Some(log_dir) => {
       let fname = format!("{}.log", config.basename.clone());
       let buff = PathBuf::new();
-      ensure_dir(&buff.join(&log_dir))?;
+      ensure_dir(&buff.join(log_dir))?;
       let dir = match std::fs::canonicalize(log_dir.clone()) {
         Ok(d) => d,
         Err(e) => anyhow::bail!("Failed to remove canonicalize log file '{}'", e),
@@ -97,14 +97,14 @@ pub fn start_tracing(config: Arc<LoggingConfig>, worker_name: &String, tid: &Tra
   let layers = match config.flame.as_ref() {
     None => layers.with(None),
     Some(flame) => {
-      if flame.len() == 0 {
+      if flame.is_empty() {
         layers.with(None)
       } else {
         let flame_path = match config.directory.as_ref() {
           Some(p) => PathBuf::from(p).join(flame),
           None => PathBuf::from(flame),
         };
-        let (mut flame_layer, _flame_guard) = match FlameLayer::with_file(&flame_path) {
+        let (mut flame_layer, _flame_guard) = match FlameLayer::with_file(flame_path) {
           Ok(l) => l,
           Err(e) => bail_error!(tid=%tid, error=%e, "Failed to make FlameLayer"),
         };
@@ -137,7 +137,7 @@ pub fn timezone(tid: &TransactionId) -> Result<String> {
     Some(_) => return Ok(tz_str),
     None => (),
   };
-  let sections: Vec<&str> = tz_str.split("/").collect();
+  let sections: Vec<&str> = tz_str.split('/').collect();
   if sections.len() == 2 {
     anyhow::bail!("Unknown timezome string {}", tz_str)
   }

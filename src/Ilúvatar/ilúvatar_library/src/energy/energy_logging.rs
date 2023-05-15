@@ -84,12 +84,11 @@ impl EnergyLogger {
 
 impl Drop for EnergyLogger {
   fn drop(&mut self) {
-    match self._perf_child.take() {
-      Some(mut c) => match c.kill() {
+    if let Some(mut c) = self._perf_child.take() {
+      match c.kill() {
         Ok(_) => (),
         Err(e) => error!(error=%e, "Failed to kill perf child!"),
-      },
-      None => (),
+      }
     }
   }
 }

@@ -31,13 +31,13 @@ impl IPMI {
   /// Get the instantaneous wattage usage of the system from ipmi
   pub fn read(&self, tid: &TransactionId) -> anyhow::Result<u128> {
     trace!(tid=%tid, "Reading from ipmi");
-    let output = execute_cmd_checked("/usr/bin/ipmitool", &vec!["-f", self.ipmi_pass_file.as_str(), "-I", "lanplus",
+    let output = execute_cmd_checked("/usr/bin/ipmitool", vec!["-f", self.ipmi_pass_file.as_str(), "-I", "lanplus",
                                                        "-H", self.ipmi_ip_addr.as_str(), "-U", "ADMIN", "dcmi", "power", "reading"], None, tid)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut split = stdout.split("\n");
+    let mut split = stdout.split('\n');
     match split.nth(1) {
       Some(instant_line) => {
-        let strs: Vec<&str> = instant_line.split(" ").filter(|str| str.len() > 0).collect();
+        let strs: Vec<&str> = instant_line.split(' ').filter(|str| !str.is_empty()).collect();
         if strs.len() == 5 {
           let watts = strs[3];
           Ok(watts.parse::<u128>()?)

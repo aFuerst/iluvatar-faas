@@ -26,7 +26,7 @@ pub struct EnergyMonitorService {
 }
 
 impl EnergyMonitorService {
-  pub fn boxed(worker_name: &String) -> Arc<Self> {
+  pub fn boxed(worker_name: &str) -> Arc<Self> {
     let (tx, rx) = channel();
     let handle = EnergyMonitorService::launch_worker_thread(rx);
 
@@ -95,7 +95,7 @@ impl EnergyMonitorService {
   #[tracing::instrument(skip(self), fields(tid=%tid))]
   fn monitor_energy(&self, tid: &TransactionId, _time: u128, uj: u128) -> bool {
     let (invocation_durations, overhead) = self.get_data();
-    if invocation_durations.len() == 0 {
+    if invocation_durations.is_empty() {
       return false;
     }
     let mut function_data = HashMap::new();
@@ -125,7 +125,7 @@ impl EnergyMonitorService {
     // }
     // self.graphite.publish_metric("worker.energy.used_uj", uj, tid, &self.tags.as_str());
     // self.graphite.publish_metric("worker.energy.overhead_pct", overhead_pct, tid, &self.tags.as_str());
-    return true;
+    true
   }
 
   /// get the cumulative amount of uj used by the worker, and reset the counter
@@ -211,7 +211,7 @@ impl EnergyMonitorService {
         match s.fqdn() {
           Some(f) => {
             // println!("function {f:?} completed span in {time_ns} ns");
-            self.invocation_durations.write().as_mut().unwrap().insert(s.transaction_id.unwrap().clone(), (f, time_ns) );
+            self.invocation_durations.write().as_mut().unwrap().insert(s.transaction_id.unwrap(), (f, time_ns) );
           },
           None => panic!("Completed invocation span didn't have a valid FQDN: {:?}", s),
         }

@@ -68,33 +68,33 @@ impl IntoIterator for Compute {
     vec![Compute::CPU, Compute::GPU, Compute::FPGA].into_iter().filter(|x| self.contains(*x)).collect::<Vec<Compute>>().into_iter()
   } 
 }
-impl Into<Compute> for Vec<ComputeEnum> {
-  fn into(self) -> Compute {
+impl From<Vec<ComputeEnum>> for Compute {
+  fn from(val: Vec<ComputeEnum>) -> Compute {
     let mut r = Compute::empty();
-    for i in self.iter() {
+    for i in val.iter() {
       r |= i.into()
     }
     r
   }
 }
-impl Into<Compute> for &ComputeEnum {
-  fn into(self) -> Compute {
-    match self {
+impl From<&ComputeEnum> for Compute {
+  fn from(val: &ComputeEnum) -> Self {
+    match val {
       ComputeEnum::cpu => Compute::CPU,
       ComputeEnum::gpu => Compute::GPU,
       ComputeEnum::fpga => Compute::FPGA,
     }
   }
 }
-impl Into<Compute> for u32 {
-  fn into(self) -> Compute {
-    Compute::from_bits_truncate(self)
+impl From<u32> for Compute {
+  fn from(val: u32) -> Self {
+    Compute::from_bits_truncate(val)
   }
 }
 impl TryFrom<&String> for Compute {
   fn try_from(value: &String) -> Result<Compute, Self::Error> {
     let mut vec = vec![];
-    for slice in value.split("|") {
+    for slice in value.split('|') {
       vec.push(match ComputeEnum::from_str(slice, true) {
         Ok(c) => c,
         Err(e) => anyhow::bail!(e),
@@ -112,32 +112,32 @@ pub enum IsolationEnum {
   DOCKER,
   // INVALID deliberately not included
 }
-impl Into<Isolation> for Vec<IsolationEnum> {
-  fn into(self) -> Isolation {
+impl From<Vec<IsolationEnum>> for Isolation {
+  fn from(val: Vec<IsolationEnum>) -> Isolation {
     let mut r = Isolation::empty();
-    for i in self.iter() {
+    for i in val.iter() {
       r |= i.into();
     }
     r
   }
 }
-impl Into<Isolation> for &IsolationEnum {
-  fn into(self) -> Isolation {
-    match self {
+impl From<&IsolationEnum> for Isolation {
+  fn from(val: &IsolationEnum) -> Self {
+    match val {
       IsolationEnum::CONTAINERD => Isolation::CONTAINERD,
       IsolationEnum::DOCKER => Isolation::DOCKER,
     }
   }
 }
-impl Into<Isolation> for u32 {
-  fn into(self) -> Isolation {
-    Isolation::from_bits_truncate(self)
+impl From<u32> for Isolation {
+  fn from(val: u32) -> Self {
+    Isolation::from_bits_truncate(val)
   }
 }
 impl TryFrom<&String> for Isolation {
   fn try_from(value: &String) -> Result<Isolation, Self::Error> {
     let mut vec = vec![];
-    for slice in value.split("|") {
+    for slice in value.split('|') {
       vec.push(match IsolationEnum::from_str(slice, true) {
         Ok(i) => i,
         Err(e) => anyhow::bail!(e),

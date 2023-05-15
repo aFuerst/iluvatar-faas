@@ -59,7 +59,7 @@ impl RAPL {
   }
 
   fn read_uj(pth: &str) -> Result<u128> {
-    Ok(read_to_string(pth)?.strip_suffix("\n").unwrap().parse::<u128>()?)
+    Ok(read_to_string(pth)?.strip_suffix('\n').unwrap().parse::<u128>()?)
   }
 }
 
@@ -208,7 +208,7 @@ impl RaplMsr {
       let power_unit = ((result&0xf) as f64).powf(0.5);
       let cpu_energy_unit = (((result>>8)&0x1f) as f64).powf(0.5);
       let time_unit = (((result>>16)&0xf) as f64).powf(0.5);
-      return Ok( (power_unit, cpu_energy_unit, time_unit) )
+      Ok( (power_unit, cpu_energy_unit, time_unit) )
     } else {
       let result = RaplMsr::read_msr(cpu, fd, AMD_MSR_PWR_UNIT, tid);
       if result == 0 {
@@ -217,7 +217,7 @@ impl RaplMsr {
       let power_unit = ( ((result&AMD_TIME_UNIT_MASK) >> 16) as f64).powf(0.5);
       let cpu_energy_unit = ( ((result&AMD_ENERGY_UNIT_MASK) >> 8) as f64).powf(0.5);
       let time_unit = ((result&AMD_POWER_UNIT_MASK) as f64).powf(0.5);
-      return Ok( (power_unit, cpu_energy_unit, time_unit) )
+      Ok( (power_unit, cpu_energy_unit, time_unit) )
     }
   }
 }

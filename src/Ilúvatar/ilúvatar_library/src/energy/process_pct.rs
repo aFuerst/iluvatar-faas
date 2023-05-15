@@ -31,15 +31,15 @@ impl ProcessMonitor {
 
   /// Reads the different energy sources and writes the current staistics out to the csv file
   fn monitor_process(&self, tid: &TransactionId) {
-    let (cpu_pct, cpu_time) = match execute_cmd_checked("/usr/bin/ps", &vec!["-p", self.pid.as_str(), "-o", "%C %x"], None, tid) {
+    let (cpu_pct, cpu_time) = match execute_cmd_checked("/usr/bin/ps", vec!["-p", self.pid.as_str(), "-o", "%C %x"], None, tid) {
       Ok(out) => {
         let stdout = String::from_utf8_lossy(&out.stdout);
-        let data = stdout.split("\n").collect::<Vec<&str>>();
+        let data = stdout.split('\n').collect::<Vec<&str>>();
         if data.len() == 1 {
           return;
         }
         let data = data[1];
-        let items = data.split_ascii_whitespace().filter(|str| str.len() > 0).collect::<Vec<&str>>();
+        let items = data.split_ascii_whitespace().filter(|str| !str.is_empty()).collect::<Vec<&str>>();
         let cpu_pct = match items[0].parse::<f64>() {
           Ok(f) => f,
           Err(e) => {
