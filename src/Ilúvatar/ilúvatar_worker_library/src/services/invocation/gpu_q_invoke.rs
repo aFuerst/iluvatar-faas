@@ -27,14 +27,14 @@ pub struct GpuBatch {
 impl GpuBatch {
   pub fn new(first_item: Arc<EnqueuedInvocation>, est_wall_time: f64) -> Self {
     GpuBatch {
-      data: VecDeque::from([MinHeapEnqueuedInvocation::new_f(first_item.clone(), est_wall_time, est_wall_time).into()]),
+      data: VecDeque::from([MinHeapEnqueuedInvocation::new_f(first_item, est_wall_time, est_wall_time)]),
       est_time: est_wall_time,
     }
   }
 
   pub fn add(&mut self, item: Arc<EnqueuedInvocation>, est_wall_time: f64) {
     self.est_time += est_wall_time;
-    self.data.push_back(MinHeapEnqueuedInvocation::new_f(item.clone(), est_wall_time, est_wall_time).into());
+    self.data.push_back(MinHeapEnqueuedInvocation::new_f(item, est_wall_time, est_wall_time));
   }
 
   /// The registration for the items in the batch
@@ -153,17 +153,12 @@ impl GpuQueueingInvoker {
   /// Check the invocation queue, running things when there are sufficient resources
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self), fields(tid=%tid)))]
   async fn monitor_queue(self: Arc<Self>, tid: TransactionId) {
-    loop {
-      if let Some(peek_reg) = self.queue.next_batch() {
-        if let Some(permit) = self.acquire_resources_to_run(&peek_reg, &tid) {
-          let batch = self.queue.pop_queue();
-          self.spawn_tokio_worker(self.clone(), batch, permit, &tid);  
-        }else { 
-          debug!(tid=%tid, fqdn=%peek_reg.fqdn, "Insufficient resources to run item");
-          break; 
-        }
-      } else { 
-        // nothing can be run, or nothing to run
+    while let Some(peek_reg) = self.queue.next_batch() {
+      if let Some(permit) = self.acquire_resources_to_run(&peek_reg, &tid) {
+        let batch = self.queue.pop_queue();
+        self.spawn_tokio_worker(self.clone(), batch, permit, &tid);  
+      }else { 
+        debug!(tid=%tid, fqdn=%peek_reg.fqdn, "Insufficient resources to run item");
         break; 
       }
     }
@@ -173,7 +168,7 @@ impl GpuQueueingInvoker {
   /// A return value of [None] means the resources failed to be acquired
   fn acquire_resources_to_run(&self, reg: &Arc<RegisteredFunction>, tid: &TransactionId) -> Option<Box<dyn Drop+Send>> {
     let mut ret = vec![];
-    match self.cpu.try_acquire_cores(&reg, &tid) {
+    match self.cpu.try_acquire_cores(reg, tid) {
       Ok(c) => ret.push(c),
       Err(e) => { 
         match e {
@@ -271,7 +266,7 @@ impl GpuQueueingInvoker {
   /// [Compute]: Compute the invocation was run on
   /// [ContainerState]: State the container was in for the invocation
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, reg, json_args, queue_insert_time), fields(tid=%tid)))]
-  async fn invoke<'a>(&'a self, reg: &'a Arc<RegisteredFunction>, json_args: &'a String, tid: &'a TransactionId, 
+  async fn invoke<'a>(&'a self, reg: &'a Arc<RegisteredFunction>, json_args: &'a str, tid: &'a TransactionId, 
     queue_insert_time: OffsetDateTime) -> Result<(ParsedResult, Duration, Compute, ContainerState)> {
     debug!(tid=%tid, "Internal invocation starting");
     // take run time now because we may have to wait to get a container
@@ -291,7 +286,7 @@ impl GpuQueueingInvoker {
   /// [Compute]: Compute the invocation was run on
   /// [ContainerState]: State the container was in for the invocation
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, reg, json_args, queue_insert_time, ctr_lock, remove_time,cold_time_start) fields(tid=%tid)))]
-  async fn invoke_on_container<'a>(&'a self, reg: &'a Arc<RegisteredFunction>, json_args: &'a String, tid: &'a TransactionId, queue_insert_time: OffsetDateTime, 
+  async fn invoke_on_container<'a>(&'a self, reg: &'a Arc<RegisteredFunction>, json_args: &'a str, tid: &'a TransactionId, queue_insert_time: OffsetDateTime, 
     ctr_lock: ContainerLock<'a>, remove_time: String, cold_time_start: Instant) -> Result<(ParsedResult, Duration, Compute, ContainerState)> {
     
     info!(tid=%tid, insert_time=%self.clock.format_time(queue_insert_time)?, remove_time=%remove_time, "Item starting to execute");

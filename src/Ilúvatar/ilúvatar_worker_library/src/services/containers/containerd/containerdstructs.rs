@@ -40,7 +40,7 @@ pub struct ContainerdContainer {
 }
 
 impl ContainerdContainer {
-  pub fn new(container_id: String, task: Task, port: Port, address: String, _parallel_invokes: NonZeroU32, fqdn: &String, function: &Arc<RegisteredFunction>, ns: Arc<Namespace>, invoke_timeout: u64, state: ContainerState, compute: Compute, device: Option<Arc<GPU>>,) -> Result<Self> {
+  pub fn new(container_id: String, task: Task, port: Port, address: String, _parallel_invokes: NonZeroU32, fqdn: &str, function: &Arc<RegisteredFunction>, ns: Arc<Namespace>, invoke_timeout: u64, state: ContainerState, compute: Compute, device: Option<Arc<GPU>>,) -> Result<Self> {
     let invoke_uri = calculate_invoke_uri(&address, port);
     let base_uri = calculate_base_uri(&address, port);
     let client = match reqwest::Client::builder()
@@ -54,7 +54,7 @@ impl ContainerdContainer {
       };
     Ok(ContainerdContainer {
       container_id, task, port, address, invoke_uri, base_uri, client, compute,
-      fqdn: fqdn.clone(),
+      fqdn: fqdn.to_owned(),
       function: function.clone(),
       last_used: RwLock::new(SystemTime::now()),
       namespace: ns,
@@ -72,7 +72,7 @@ impl ContainerdContainer {
   }
 
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, json_args), fields(tid=%tid, fqdn=%self.fqdn)))]
-  async fn call_container(&self, json_args: &String, tid: &TransactionId) -> Result<(Response, Duration)> {
+  async fn call_container(&self, json_args: &str, tid: &TransactionId) -> Result<(Response, Duration)> {
     let builder = self.client.post(&self.invoke_uri)
                   .body(json_args.to_owned())
                   .header("Content-Type", "application/json");
@@ -105,7 +105,7 @@ impl ContainerdContainer {
 #[tonic::async_trait]
 impl ContainerT for ContainerdContainer {
   #[tracing::instrument(skip(self, json_args), fields(tid=%tid, fqdn=%self.fqdn), name="ContainerdContainer::invoke")]
-  async fn invoke(&self, json_args: &String, tid: &TransactionId) -> Result<(ParsedResult, Duration)> {
+  async fn invoke(&self, json_args: &str, tid: &TransactionId) -> Result<(ParsedResult, Duration)> {
     self.update_metadata_on_invoke(tid);
     let (response, duration) = self.call_container(json_args, tid).await?;
     let status = response.status();

@@ -1,5 +1,6 @@
 [build]
 rustflags = [
+  "-Dwarnings",
   "-Dclippy::suspicious",
   "-Dclippy::correctness",
   "-Dclippy::perf",

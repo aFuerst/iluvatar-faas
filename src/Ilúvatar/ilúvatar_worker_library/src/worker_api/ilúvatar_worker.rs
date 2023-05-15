@@ -43,7 +43,7 @@ impl IluvatarWorker for IluvatarWorkerImpl {
     async fn ping(&self, request: Request<PingRequest>) -> Result<Response<PingResponse>, Status> {
       println!("Got a request: {:?}", request);
       let reply = PingResponse {
-          message: format!("Pong").into(),
+          message: "Pong".to_string(),
       };
       info!("in ping");
       Ok(Response::new(reply))
@@ -150,7 +150,7 @@ impl IluvatarWorker for IluvatarWorkerImpl {
         None => {
           let resp = PrewarmResponse {
             success: false,
-            message: format!("{{ \"Error\": \"Function was not registered\" }}"),
+            message: "{ \"Error\": \"Function was not registered\" }".to_string(),
           };
           return Ok(Response::new(resp));
         },
@@ -159,7 +159,7 @@ impl IluvatarWorker for IluvatarWorkerImpl {
       if !reg.supported_compute.intersects(compute) {
         let resp = PrewarmResponse {
           success: false,
-          message: format!("{{ \"Error\": \"Function was not registered with the specified compute\" }}"),
+          message: "{ \"Error\": \"Function was not registered with the specified compute\" }".to_string(),
         };
         return Ok(Response::new(resp));
       }
@@ -177,7 +177,7 @@ impl IluvatarWorker for IluvatarWorkerImpl {
           error!(tid=%request.transaction_id, error=%e, "Container prewarm failed");
           let resp = PrewarmResponse {
             success: false,
-            message: format!("{{ \"Error\": \"{}\" }}", e.to_string()),
+            message: format!("{{ \"Error\": \"{}\" }}", e),
           };
           Ok(Response::new(resp))  
         }
@@ -196,7 +196,7 @@ impl IluvatarWorker for IluvatarWorkerImpl {
         Ok(_) => {
           let reply = RegisterResponse {
             success: true,
-            function_json_result: format!("{{\"Ok\": \"function registered\"}}").into(),
+            function_json_result: "{\"Ok\": \"function registered\"}".to_string(),
           };
           Ok(Response::new(reply))        
         },
@@ -204,7 +204,7 @@ impl IluvatarWorker for IluvatarWorkerImpl {
           error!(tid=%tid, error=%msg, "Registration failed");
           let reply = RegisterResponse {
             success: false,
-            function_json_result: format!("{{\"Error\": \"Error during registration: '{:?}\"}}", msg).into(),
+            function_json_result: format!("{{\"Error\": \"Error during registration: '{:?}\"}}", msg),
           };
           Ok(Response::new(reply))        
         },

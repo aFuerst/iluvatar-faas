@@ -176,11 +176,11 @@ impl EnqueuedInvocation {
       result_ptr.result_json = format!("{{ \"Error\": \"{}\" }}", error);
       result_ptr.completed = true;
       self.signal();
-      return false;
+      false
     } else {
       result_ptr.attempts += 1;
       self.unlock();
-      return true;
+      true
     }
   }
 }

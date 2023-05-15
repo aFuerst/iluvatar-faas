@@ -40,10 +40,10 @@ impl RegistrationService {
   }
 
   pub async fn register(&self, request: RegisterRequest, tid: &TransactionId) -> Result<Arc<RegisteredFunction>> {
-    if request.function_name.len() < 1 {
+    if request.function_name.is_empty() {
       anyhow::bail!("Invalid function name");
     }
-    if request.function_version.len() < 1 {
+    if request.function_version.is_empty() {
       anyhow::bail!("Invalid function version");
     }
     if request.memory < self.limits_config.mem_min_mb || request.memory > self.limits_config.mem_max_mb {
@@ -55,7 +55,7 @@ impl RegistrationService {
     if request.parallel_invokes != 1 {
       anyhow::bail!("Illegal parallel invokes set, must be 1");
     }
-    if request.function_name.contains("/") || request.function_name.contains("\\") {
+    if request.function_name.contains('/') || request.function_name.contains('\\') {
       anyhow::bail!("Illegal characters in function name: cannot container any \\,/");
     }
     let mut isolation: Isolation = request.isolate.into();
@@ -69,10 +69,7 @@ impl RegistrationService {
     }
 
     for specific_compute in compute {
-      let compute_config = match self.resources.resource_map.get(&(&specific_compute).try_into()?) {
-        Some(c) => Some(c.clone()),
-        None => None,
-      };
+      let compute_config = self.resources.resource_map.get(&(&specific_compute).try_into()?).cloned();
       if let Some(compute_config) = compute_config {
         if compute_config.count == 0 {
           anyhow::bail!("Could not register function for compute {:?} because the worker has no devices of that type!", specific_compute);
@@ -113,7 +110,7 @@ impl RegistrationService {
     debug!(tid=%tid, function_name=%ret.function_name, function_version=%ret.function_version, fqdn=%ret.fqdn, "Adding new registration to registered_functions map");
     self.reg_map.write().insert(fqdn.clone(), ret.clone());
 
-    if request.resource_timings_json.len() > 0 {
+    if !request.resource_timings_json.is_empty() {
       match serde_json::from_str::<ResourceTimings>(&request.resource_timings_json) {
         Ok(r) => {
           for dev_compute in compute {
@@ -147,7 +144,7 @@ impl RegistrationService {
   /// Get the Cold, Warm, and Execution time [Characteristics] specific to the given compute
   fn get_characteristics(compute: Compute) -> Result<(Characteristics, Characteristics, Characteristics)> {
     if compute == Compute::CPU {
-      return Ok((Characteristics::ColdTime, Characteristics::WarmTime, Characteristics::ExecTime));
+      Ok((Characteristics::ColdTime, Characteristics::WarmTime, Characteristics::ExecTime))
     } else if compute == Compute::GPU {
       return Ok((Characteristics::GpuColdTime, Characteristics::GpuWarmTime, Characteristics::GpuExecTime));
     } else {
@@ -156,9 +153,6 @@ impl RegistrationService {
   }
 
   pub fn get_registration(&self, fqdn: &String) -> Option<Arc<RegisteredFunction>> {
-    match self.reg_map.read().get(fqdn) {
-      Some(val) => Some(val.clone()),
-      None => None,
-    }
+    self.reg_map.read().get(fqdn).cloned()
   }
 }

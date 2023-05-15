@@ -23,26 +23,20 @@ impl WorkerAPIFactory {
 
 impl WorkerAPIFactory {
   fn try_get_rpcapi(&self, worker: &String) -> Option<RPCWorkerAPI> {
-    match self.rpc_apis.get(worker) {
-      Some(r) => Some(r.clone()),
-      None => None,
-    }
+    self.rpc_apis.get(worker).map(|r| r.clone())
   }
 
   fn try_get_simapi(&self, worker: &String) -> Option<Arc<IluvatarWorkerImpl>> {
-    match self.sim_apis.get(worker) {
-      Some(r) => Some(r.clone()),
-      None => None,
-    }
+    self.sim_apis.get(worker).map(|r| r.clone())
   }
 
   /// the list of all workers the factory has cached
   pub fn get_cached_workers(&self) -> Vec<(String, Box<dyn WorkerAPI + Send>)> {
     let mut ret: Vec<(String, Box<dyn WorkerAPI + Send>)> = vec![];
-    if self.rpc_apis.len() > 0 {
+    if !self.rpc_apis.is_empty() {
       self.rpc_apis.iter().for_each(|x| ret.push( (x.key().clone(), Box::new(x.value().clone())) ));
     } 
-    if self.sim_apis.len() > 0 {
+    if !self.sim_apis.is_empty() {
       self.sim_apis.iter().for_each(|x| ret.push( (x.key().clone(), Box::new(SimWorkerAPI::new(x.value().clone()))) ));
     }
     ret
@@ -54,7 +48,7 @@ impl WorkerAPIFactory {
       CommunicationMethod::RPC => { match self.try_get_rpcapi(worker) {
           Some(r) => Ok(Box::new(r)),
           None => {
-            let api = match RPCWorkerAPI::new(&host, port, &tid).await {
+            let api = match RPCWorkerAPI::new(host, port, tid).await {
               Ok(api) => api,
               Err(e) => bail_error!(tid=%tid, worker=%worker, error=%e, "Unable to create API for worker"),
             };

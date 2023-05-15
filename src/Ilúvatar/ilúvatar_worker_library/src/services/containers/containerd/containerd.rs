@@ -85,7 +85,7 @@ impl ContainerdIsolation {
 
   /// connect to the containerd socket
   pub async fn connect(&mut self) -> Result<()> {
-    if let Some(_) = &self.channel {
+    if self.channel.is_some() {
       Ok(())
     } else {
       let channel = containerd_client::connect(CONTAINERD_SOCK).await?;
@@ -100,9 +100,9 @@ impl ContainerdIsolation {
   }
 
   /// get the default container spec
-  fn spec(&self, host_addr: &str, port: Port, mem_limit_mb: MemSizeMb, cpus: u32, net_ns_name: &String, container_id: &String) -> prost_types::Any {
+  fn spec(&self, host_addr: &str, port: Port, mem_limit_mb: MemSizeMb, cpus: u32, net_ns_name: &str, container_id: &str) -> prost_types::Any {
     // one second of time, in microseconds
-    let one_sec_in_us: u64 = 1 * 1000 * 1000;
+    let one_sec_in_us: u64 = 1000 * 1000;
     // https://github.com/opencontainers/runtime-spec/blob/main/config-linux.md
     let spec = include_str!("../../../resources/container_spec.json");
     let spec = spec
@@ -148,12 +148,12 @@ impl ContainerdIsolation {
   }
   
   /// get the mount points for a container's (id) snapshot base
-  async fn load_mounts(&self, cid: &str, snapshot_base: &String, tid: &TransactionId) -> Result<Vec<containerd_client::types::Mount>> {
+  async fn load_mounts(&self, cid: &str, snapshot_base: &str, tid: &TransactionId) -> Result<Vec<containerd_client::types::Mount>> {
     let view_snapshot_req = PrepareSnapshotRequest {
         // https://github.com/containerd/containerd/tree/main/docs/snapshotters
         snapshotter: self.config.snapshotter.clone(),
         key: cid.to_owned(),
-        parent: snapshot_base.clone(),
+        parent: snapshot_base.to_owned(),
         labels: HashMap::new(),
     };
     let mut cli = SnapshotsClient::new(self.channel());
@@ -169,7 +169,7 @@ impl ContainerdIsolation {
     }
   }
 
-  async fn delete_task(&self, client: &mut TasksClient<Channel>, container_id: &String, ctd_namespace: &str, tid: &TransactionId) -> Result<()> {
+  async fn delete_task(&self, client: &mut TasksClient<Channel>, container_id: &str, ctd_namespace: &str, tid: &TransactionId) -> Result<()> {
     let start = SystemTime::now();
     let timeout = Duration::from_secs(10);
     loop {
@@ -188,9 +188,9 @@ impl ContainerdIsolation {
 
   /// Attempts to delete a task
   /// Sometimes this can fail if the internal process hasn't shut down yet (or wasn't killed at all)
-  async fn try_delete_task(&self, client: &mut TasksClient<Channel>, container_id: &String, ctd_namespace: &str, tid: &TransactionId) -> Result<()> {
+  async fn try_delete_task(&self, client: &mut TasksClient<Channel>, container_id: &str, ctd_namespace: &str, tid: &TransactionId) -> Result<()> {
     let req = DeleteTaskRequest {
-      container_id: container_id.clone(),
+      container_id: container_id.to_owned(),
     };
     let req = with_namespace!(req, ctd_namespace);
 
@@ -215,9 +215,9 @@ impl ContainerdIsolation {
     }
   }
 
-  async fn kill_task(&self, client: &mut TasksClient<Channel>, container_id: &String, ctd_namespace: &str, tid:&TransactionId) -> Result<()> {
+  async fn kill_task(&self, client: &mut TasksClient<Channel>, container_id: &str, ctd_namespace: &str, tid:&TransactionId) -> Result<()> {
     let req = KillRequest {
-      container_id: container_id.clone(),
+      container_id: container_id.to_owned(),
       // exec_id: container.task.pid.to_string(),
       exec_id: "".to_string(),
       signal: 9, // SIGKILL
@@ -243,9 +243,9 @@ impl ContainerdIsolation {
     Ok(())
   }
 
-  async fn delete_containerd_container(&self, client: &mut ContainersClient<Channel>, container_id: &String, ctd_namespace: &str, tid:&TransactionId) -> Result<()> {
+  async fn delete_containerd_container(&self, client: &mut ContainersClient<Channel>, container_id: &str, ctd_namespace: &str, tid:&TransactionId) -> Result<()> {
     let req = DeleteContainerRequest {
-      id: container_id.clone(),
+      id: container_id.to_owned(),
     };
     let req = with_namespace!(req, ctd_namespace);
 
@@ -259,7 +259,7 @@ impl ContainerdIsolation {
     Ok(())
   }
 
-  fn delete_container_resources(&self, container_id: &String, tid: &TransactionId) {
+  fn delete_container_resources(&self, container_id: &str, tid: &TransactionId) {
     try_remove_pth(&self.stdin_pth(container_id), tid);
     try_remove_pth(&self.stdout_pth(container_id), tid);
     try_remove_pth(&self.stderr_pth(container_id), tid);
@@ -391,7 +391,7 @@ impl ContainerdIsolation {
   
   /// Create a container using the given image in the specified namespace
   /// Does not start any process in it
-  async fn create_container(&self, fqdn: &String, image_name: &String, namespace: &str, parallel_invokes: u32, mem_limit_mb: MemSizeMb, cpus: u32, reg: &Arc<RegisteredFunction>, tid: &TransactionId, compute: Compute, device_resource: Option<Arc<crate::services::resources::gpu::GPU>>) -> Result<ContainerdContainer> {
+  async fn create_container(&self, fqdn: &str, image_name: &str, namespace: &str, parallel_invokes: u32, mem_limit_mb: MemSizeMb, cpus: u32, reg: &Arc<RegisteredFunction>, tid: &TransactionId, compute: Compute, device_resource: Option<Arc<crate::services::resources::gpu::GPU>>) -> Result<ContainerdContainer> {
     let port = 8080;
 
     let permit = match &self.creation_sem {
@@ -418,8 +418,8 @@ impl ContainerdIsolation {
     labels.insert("owner".to_string(), "iluvatar_worker".to_string());
 
     let container = Containerd_Container {
-      id: cid.to_string(),
-      image: image_name.to_string(),
+      id: cid.clone(),
+      image: image_name.to_owned(),
       runtime: Some(Runtime {
           name: "io.containerd.runc.v2".to_string(),
           options: None,
@@ -428,7 +428,7 @@ impl ContainerdIsolation {
       created_at: None,
       updated_at: None,
       extensions: HashMap::new(),
-      labels: labels,
+      labels,
       snapshot_key: "".to_string(),
       snapshotter: self.config.snapshotter.clone(),
     };
@@ -472,9 +472,9 @@ impl ContainerdIsolation {
       rootfs: mounts,
       checkpoint: None,
       options: None,
-      stdin: stdin,
-      stdout: stdout,
-      stderr: stderr,
+      stdin,
+      stdout,
+      stderr,
       terminal: false,
     };
     let req = with_namespace!(req, namespace);
@@ -490,7 +490,7 @@ impl ContainerdIsolation {
           running: false
         };
         unsafe {
-          Ok(ContainerdContainer::new(cid, task, port, address.clone(), std::num::NonZeroU32::new_unchecked(parallel_invokes), &fqdn, &reg, ns, self.limits_config.timeout_sec, ContainerState::Cold, compute, device_resource)?)
+          Ok(ContainerdContainer::new(cid, task, port, address.clone(), std::num::NonZeroU32::new_unchecked(parallel_invokes), fqdn, reg, ns, self.limits_config.timeout_sec, ContainerState::Cold, compute, device_resource)?)
         }
       },
       Err(e) => {
@@ -503,13 +503,13 @@ impl ContainerdIsolation {
     }
   }
 
-  fn stdout_pth(&self, container_id: &String) -> String {
+  fn stdout_pth(&self, container_id: &str) -> String {
     temp_file_pth(container_id, "stdout")
   }
-  fn stderr_pth(&self, container_id: &String) -> String {
+  fn stderr_pth(&self, container_id: &str) -> String {
     temp_file_pth(container_id, "stderr")
   }
-  fn stdin_pth(&self, container_id: &String) -> String {
+  fn stdin_pth(&self, container_id: &str) -> String {
     temp_file_pth(container_id, "stdin")
   }
 }
@@ -524,7 +524,7 @@ impl ContainerIsolationService for ContainerdIsolation {
   /// Run inside the specified namespace
   /// returns a new, unique ID representing it
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, reg, fqdn, image_name, parallel_invokes, namespace, mem_limit_mb, cpus), fields(tid=%tid)))]
-  async fn run_container(&self, fqdn: &String, image_name: &String, parallel_invokes: u32, namespace: &str, mem_limit_mb: MemSizeMb, cpus: u32, reg: &Arc<RegisteredFunction>, iso: Isolation, compute: Compute, device_resource: Option<Arc<crate::services::resources::gpu::GPU>>, tid: &TransactionId) -> Result<Container> {
+  async fn run_container(&self, fqdn: &str, image_name: &str, parallel_invokes: u32, namespace: &str, mem_limit_mb: MemSizeMb, cpus: u32, reg: &Arc<RegisteredFunction>, iso: Isolation, compute: Compute, device_resource: Option<Arc<crate::services::resources::gpu::GPU>>, tid: &TransactionId) -> Result<Container> {
     if ! iso.eq(&Isolation::CONTAINERD) {
       anyhow::bail!("Only supports containerd Isolation, now {:?}", iso);
     }
@@ -559,7 +559,7 @@ impl ContainerIsolationService for ContainerdIsolation {
   }
 
   /// Read through an image's digest to find it's snapshot base
-  async fn prepare_function_registration(&self, rf: &mut RegisteredFunction, _fqdn: &String, tid: &TransactionId) -> Result<()> {
+  async fn prepare_function_registration(&self, rf: &mut RegisteredFunction, _fqdn: &str, tid: &TransactionId) -> Result<()> {
     self.ensure_image(&rf.image_name, tid).await?;
     let snapshot_base = self.search_image_digest(&rf.image_name, "default", tid).await?;
     rf.snapshot_base = snapshot_base;
@@ -629,7 +629,7 @@ impl ContainerIsolationService for ContainerdIsolation {
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, container, timeout_ms), fields(tid=%tid)))]
   async fn wait_startup(&self, container: &Container, timeout_ms: u64, tid: &TransactionId) -> Result<()> {
     debug!(tid=%tid, container_id=%container.container_id(), "Waiting for startup of container");
-    let stderr = self.stderr_pth(&container.container_id());
+    let stderr = self.stderr_pth(container.container_id());
 
     let start = SystemTime::now();
 
@@ -656,9 +656,9 @@ impl ContainerIsolationService for ContainerdIsolation {
         },
         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
           if start.elapsed()?.as_millis() as u64 >= timeout_ms {
-            let stdout = self.read_stdout(&container, tid);
-            let stderr = self.read_stderr(&container, tid);
-            if stderr.len() > 0 {
+            let stdout = self.read_stdout(container, tid);
+            let stderr = self.read_stderr(container, tid);
+            if !stderr.is_empty() {
               warn!(tid=%tid, container_id=%&container.container_id(), "Timeout waiting for container start, but stderr was written to?");
               return Ok(())
             }
@@ -674,7 +674,7 @@ impl ContainerIsolationService for ContainerdIsolation {
 
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, container), fields(tid=%tid)))]
   fn update_memory_usage_mb(&self, container: &Container, tid: &TransactionId) -> MemSizeMb {
-    let cast_container = match crate::services::containers::structs::cast::<ContainerdContainer>(&container, tid) {
+    let cast_container = match crate::services::containers::structs::cast::<ContainerdContainer>(container, tid) {
       Ok(c) => c,
       Err(e) => { 
         warn!(tid=%tid, error=%e, "Error casting container to ContainerdContainer");
@@ -690,7 +690,7 @@ impl ContainerIsolationService for ContainerdIsolation {
         return container.get_curr_mem_usage(); 
       },
     };
-    let split: Vec<&str> = contents.split(" ").collect();
+    let split: Vec<&str> = contents.split(' ').collect();
     // https://linux.die.net/man/5/proc
     // virtual memory resident set size
     let vmrss = split[1];
@@ -707,7 +707,7 @@ impl ContainerIsolationService for ContainerdIsolation {
   }
 
   fn read_stdout(&self, container: &Container, tid: &TransactionId) -> String {
-    let path = self.stdout_pth(&container.container_id());
+    let path = self.stdout_pth(container.container_id());
     match std::fs::read_to_string(path) {
       Ok(s) => str::replace(&s, "\n", "\\n"),
       Err(e) =>  {
@@ -717,7 +717,7 @@ impl ContainerIsolationService for ContainerdIsolation {
     }
   }
   fn read_stderr(&self, container: &Container, tid: &TransactionId) -> String {
-    let path = self.stderr_pth(&container.container_id());
+    let path = self.stderr_pth(container.container_id());
     match std::fs::read_to_string(path) {
       Ok(s) => str::replace(&s, "\n", "\\n"),
       Err(e) =>  {

@@ -82,21 +82,16 @@ impl CpuQueueingInvoker {
   /// Check the invocation queue, running things when there are sufficient resources
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self), fields(tid=%_tid)))]
   async fn monitor_queue(self: Arc<Self>, _tid: TransactionId) {
-    loop {
-      if let Some(peek_item) = self.queue.peek_queue() {
-        if let Some(permit) = self.acquire_resources_to_run(&peek_item) {
-          let item = self.queue.pop_queue();
-          if ! item.lock() {
-            continue;
-          }
-          // TODO: continuity of spans here
-          self.spawn_tokio_worker(self.clone(), item, permit);  
-        }else { 
-          debug!(tid=%peek_item.tid, "Insufficient resources to run item");
-          break; 
+    while let Some(peek_item) = self.queue.peek_queue() {
+      if let Some(permit) = self.acquire_resources_to_run(&peek_item) {
+        let item = self.queue.pop_queue();
+        if ! item.lock() {
+          continue;
         }
-      } else { 
-        // nothing can be run, or nothing to run
+        // TODO: continuity of spans here
+        self.spawn_tokio_worker(self.clone(), item, permit);  
+      }else { 
+        debug!(tid=%peek_item.tid, "Insufficient resources to run item");
         break; 
       }
     }
@@ -125,23 +120,19 @@ impl CpuQueueingInvoker {
           return;
         },
       };
-      loop {
-        if let Some(item) = del_rx.recv().await {
-          let s_c = service.clone();
-          tokio::task::spawn(async move {
-            match s_c.bypassing_invoke(&item).await {
-              Ok(true) => (), // bypass happened successfully
-              Ok(false) => {
-                if let Err(cause) = s_c.enqueue_item(&item) {
-                  s_c.handle_invocation_error(item, cause);
-                };
-              },
-              Err(cause) => s_c.handle_invocation_error(item, cause),
-            };
-          });
-        } else {
-          break;
-        }
+      while let Some(item) = del_rx.recv().await {
+        let s_c = service.clone();
+        tokio::task::spawn(async move {
+          match s_c.bypassing_invoke(&item).await {
+            Ok(true) => (), // bypass happened successfully
+            Ok(false) => {
+              if let Err(cause) = s_c.enqueue_item(&item) {
+                s_c.handle_invocation_error(item, cause);
+              };
+            },
+            Err(cause) => s_c.handle_invocation_error(item, cause),
+          };
+        });
       }
     });
   
@@ -244,7 +235,7 @@ impl CpuQueueingInvoker {
   /// [Compute]: Compute the invocation was run on
   /// [ContainerState]: State the container was in for the invocation
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, reg, json_args, queue_insert_time, permit), fields(tid=%tid)))]
-  async fn invoke<'a>(&'a self, reg: &'a Arc<RegisteredFunction>, json_args: &'a String, tid: &'a TransactionId, 
+  async fn invoke<'a>(&'a self, reg: &'a Arc<RegisteredFunction>, json_args: &'a str, tid: &'a TransactionId, 
     queue_insert_time: OffsetDateTime, permit: Option<Box<dyn Drop+Send>>) -> Result<(ParsedResult, Duration, Compute, ContainerState)> {
     debug!(tid=%tid, "Internal invocation starting");
     // take run time now because we may have to wait to get a container
@@ -264,7 +255,7 @@ impl CpuQueueingInvoker {
   /// [Compute]: Compute the invocation was run on
   /// [ContainerState]: State the container was in for the invocation
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, reg, json_args, queue_insert_time, permit, ctr_lock, remove_time,cold_time_start) fields(tid=%tid)))]
-  async fn invoke_on_container<'a>(&'a self, reg: &'a Arc<RegisteredFunction>, json_args: &'a String, tid: &'a TransactionId, queue_insert_time: OffsetDateTime, 
+  async fn invoke_on_container<'a>(&'a self, reg: &'a Arc<RegisteredFunction>, json_args: &'a str, tid: &'a TransactionId, queue_insert_time: OffsetDateTime, 
       permit: Option<Box<dyn Drop+Send>>, ctr_lock: ContainerLock<'a>, remove_time: String, cold_time_start: Instant) -> Result<(ParsedResult, Duration, Compute, ContainerState)> {
     
     info!(tid=%tid, insert_time=%self.clock.format_time(queue_insert_time)?, remove_time=%remove_time, "Item starting to execute");

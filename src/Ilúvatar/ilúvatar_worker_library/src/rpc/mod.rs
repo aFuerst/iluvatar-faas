@@ -31,7 +31,7 @@ impl RPCWorkerAPI {
         Err(e) => {
           warn!(error=%e, tid=%tid, "Error opening RPC connection to Worker API");
           retries -= 1;
-          if retries <= 0 {
+          if retries == 0 {
             return Err(e);
           }
         }
@@ -109,7 +109,7 @@ impl WorkerAPI for RPCWorkerAPI {
 
   async fn invoke(&mut self, function_name: String, version: String, args: String, tid: TransactionId) -> Result<InvokeResponse> {
     let request = Request::new(InvokeRequest {
-      function_name: function_name,
+      function_name,
       function_version: version,
       json_args: args,
       transaction_id: tid
@@ -142,7 +142,7 @@ impl WorkerAPI for RPCWorkerAPI {
     }
   }
 
-  async fn invoke_async_check(&mut self, cookie: &String, tid: TransactionId) -> Result<InvokeResponse> {
+  async fn invoke_async_check(&mut self, cookie: &str, tid: TransactionId) -> Result<InvokeResponse> {
     let request = Request::new(InvokeAsyncLookupRequest {
       lookup_cookie: cookie.to_owned(),
       transaction_id: tid,
@@ -155,7 +155,7 @@ impl WorkerAPI for RPCWorkerAPI {
 
   async fn prewarm(&mut self, function_name: String, version: String, tid: TransactionId, compute: Compute) -> Result<String> {
     let request = Request::new(PrewarmRequest {
-      function_name: function_name,
+      function_name,
       function_version: version,
       transaction_id: tid.clone(),
       compute: compute.bits(),
@@ -182,7 +182,7 @@ impl WorkerAPI for RPCWorkerAPI {
       cpus,
       image_name,
       parallel_invokes: match parallels {
-        i if i <= 0 => 1,
+        i if i == 0 => 1,
         _ => parallels,
       },
       transaction_id: tid,

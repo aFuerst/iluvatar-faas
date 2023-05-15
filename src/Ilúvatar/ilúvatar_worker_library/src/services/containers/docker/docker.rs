@@ -22,7 +22,7 @@ pub struct DockerIsolation {
 impl DockerIsolation {
   pub fn supported(tid: &TransactionId) -> bool {
     let args = vec!["ps"];
-    match execute_cmd("/usr/bin/docker", &args, None, tid) {
+    match execute_cmd("/usr/bin/docker", args, None, tid) {
       Ok(out) => out.status.success(),
       Err(_) => false,
     }
@@ -44,7 +44,7 @@ impl DockerIsolation {
   /// Get the stdout and stderr of a container
   fn get_logs(&self, container: &Container, tid: &TransactionId) -> Result<(String, String)> {
     let args = vec!["logs", container.container_id().as_str()];
-    let output = execute_cmd("/usr/bin/docker", &args, None, tid)?;
+    let output = execute_cmd("/usr/bin/docker", args, None, tid)?;
     if let Some(status) = output.status.code() {
       if status != 0 {
         bail_error!(tid=%tid, status=status, output=?output, "Failed to get docker logs with exit code");
@@ -71,7 +71,7 @@ impl DockerIsolation {
     let mut end_of_num: usize = 0;
     let mut end_of_scale: usize = 0;
     for (i, c) in input.chars().enumerate() {
-      if c.is_digit(10) || c == '.' {
+      if c.is_ascii_digit() || c == '.' {
         end_of_num = i+c.len_utf8();
       }
       if c == ' ' {
@@ -111,7 +111,7 @@ impl ContainerIsolationService for DockerIsolation {
   /// Run inside the specified namespace
   /// returns a new, unique ID representing it
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, reg, fqdn, image_name, parallel_invokes, _namespace, mem_limit_mb, cpus), fields(tid=%tid)))]
-  async fn run_container(&self, fqdn: &String, image_name: &String, parallel_invokes: u32, _namespace: &str, mem_limit_mb: MemSizeMb, cpus: u32, reg: &Arc<RegisteredFunction>, iso: Isolation, compute: Compute, device_resource: Option<Arc<crate::services::resources::gpu::GPU>>, tid: &TransactionId) -> Result<Container> {
+  async fn run_container(&self, fqdn: &str, image_name: &str, parallel_invokes: u32, _namespace: &str, mem_limit_mb: MemSizeMb, cpus: u32, reg: &Arc<RegisteredFunction>, iso: Isolation, compute: Compute, device_resource: Option<Arc<crate::services::resources::gpu::GPU>>, tid: &TransactionId) -> Result<Container> {
     if ! iso.eq(&Isolation::DOCKER) {
       anyhow::bail!("Only supports docker Isolation, now {:?}", iso);
     }
@@ -121,10 +121,7 @@ impl ContainerIsolationService for DockerIsolation {
     let cpu_arg = cpus.to_string();
     let port_args = format!("{}:{}", port, port);
     let il_port = format!("__IL_PORT={}", port);
-    let gpu = match device_resource.as_ref() {
-      Some(g) => Some(format!("device={}", g.gpu_uuid)),
-      None => None
-    };
+    let gpu = device_resource.as_ref().map(|g| format!("device={}", g.gpu_uuid));
     let memory_arg = format!("{}MB", mem_limit_mb);
     
     let mut args = vec!["run", "--detach", "--name", &cid, "-e", &gunicorn_args, "-e", &il_port, "--cpus", cpu_arg.as_str(), "--memory", &memory_arg, "-e", "__IL_HOST=0.0.0.0", "--label", "owner=iluvatar_worker", "--cpus", "1", "-p", &port_args];
@@ -160,14 +157,14 @@ impl ContainerIsolationService for DockerIsolation {
     debug!(tid=%tid, name=%image_name, containerid=%cid, output=?output, "Docker container started successfully");
     info!(tid=%tid, name=%image_name, containerid=%cid, "Docker container started successfully");
     unsafe {
-      let c = DockerContainer::new(cid, port, "0.0.0.0".to_string(), std::num::NonZeroU32::new_unchecked(parallel_invokes), &fqdn, &reg, self.limits_config.timeout_sec, ContainerState::Cold, compute, device_resource)?;
+      let c = DockerContainer::new(cid, port, "0.0.0.0".to_string(), std::num::NonZeroU32::new_unchecked(parallel_invokes), fqdn, reg, self.limits_config.timeout_sec, ContainerState::Cold, compute, device_resource)?;
       Ok(Arc::new(c))
     }
   }
 
   /// Removed the specified container in the containerd namespace
   async fn remove_container(&self, container: Container, _ctd_namespace: &str, tid: &TransactionId) -> Result<()> {
-    let output = execute_cmd("/usr/bin/docker", &vec!["rm", "--force", container.container_id().as_str()], None, tid)?;
+    let output = execute_cmd("/usr/bin/docker", vec!["rm", "--force", container.container_id().as_str()], None, tid)?;
     if let Some(status) = output.status.code() {
       if status != 0 {
         bail_error!(tid=%tid, container_id=%container.container_id(), status=status, output=?output, "Failed to remove docker container with exit code");
@@ -178,12 +175,12 @@ impl ContainerIsolationService for DockerIsolation {
     Ok(())
   }
 
-  async fn prepare_function_registration(&self, rf: &mut RegisteredFunction, _fqdn: &String, tid: &TransactionId) -> Result<()> {
+  async fn prepare_function_registration(&self, rf: &mut RegisteredFunction, _fqdn: &str, tid: &TransactionId) -> Result<()> {
     if self.pulled_images.contains(&rf.image_name) {
       return Ok(());
     }
 
-    let output = execute_cmd("/usr/bin/docker", &vec!["pull", rf.image_name.as_str()], None, tid)?;
+    let output = execute_cmd("/usr/bin/docker", vec!["pull", rf.image_name.as_str()], None, tid)?;
     if let Some(status) = output.status.code() {
       if status != 0 {
         bail_error!(tid=%tid, status=status, output=?output, "Failed to pull docker image with exit code");
@@ -207,7 +204,7 @@ impl ContainerIsolationService for DockerIsolation {
       bail_error!(tid=%tid, output=?output, "Failed to run 'docker ps' with no exit code");
     }
     let cow = String::from_utf8_lossy(&output.stdout);
-    let stdout: Vec<&str> = cow.split("\n").filter(|str| str.len() > 0).collect();
+    let stdout: Vec<&str> = cow.split('\n').filter(|str| !str.is_empty()).collect();
     for docker_id in stdout {
       let output = execute_cmd("/usr/bin/docker", &vec!["rm", "--force", docker_id], None, tid)?;
       if let Some(status) = output.status.code() {
@@ -229,16 +226,16 @@ impl ContainerIsolationService for DockerIsolation {
       match self.get_logs(container, tid) {
         Ok( (_out, err) ) => {
           // stderr was written to, gunicorn server is either up or crashed
-          if err.len() > 0 {
+          if !err.is_empty() {
             break;
           }
         },
         Err(e) => bail_error!(tid=%tid, container_id=%container.container_id(), error=%e, "Timeout while reading inotify events for docker container"),
       };
       if start.elapsed()?.as_millis() as u64 >= timeout_ms {
-        let stdout = self.read_stdout(&container, tid);
-        let stderr = self.read_stderr(&container, tid);
-        if stderr.len() > 0 {
+        let stdout = self.read_stdout(container, tid);
+        let stderr = self.read_stderr(container, tid);
+        if !stderr.is_empty() {
           warn!(tid=%tid, container_id=%&container.container_id(), "Timeout waiting for docker container start, but stderr was written to?");
           return Ok(())
         }
@@ -252,14 +249,14 @@ impl ContainerIsolationService for DockerIsolation {
   #[cfg_attr(feature = "full_spans", tracing::instrument(skip(self, container), fields(tid=%tid)))]
   fn update_memory_usage_mb(&self, container: &Container, tid: &TransactionId) -> MemSizeMb {
     debug!(tid=%tid, container_id=%container.container_id(), "Updating memory usage for container");
-    let cast_container = match crate::services::containers::structs::cast::<DockerContainer>(&container, tid) {
+    let cast_container = match crate::services::containers::structs::cast::<DockerContainer>(container, tid) {
       Ok(c) => c,
       Err(e) => { 
         warn!(tid=%tid, error=%e, "Error casting container to DockerContainer");
         return container.get_curr_mem_usage();
       },
     };
-    let output = match execute_cmd("/usr/bin/docker", &vec!["stats", "--no-stream", "--format", "{{.MemUsage}}", cast_container.container_id.as_str()], None, tid) {
+    let output = match execute_cmd("/usr/bin/docker", vec!["stats", "--no-stream", "--format", "{{.MemUsage}}", cast_container.container_id.as_str()], None, tid) {
       Ok(o) => o,
       Err(e) => {
         error!(tid=%tid, error=%e, "Failed to run 'docker stats' with error");
@@ -277,17 +274,17 @@ impl ContainerIsolationService for DockerIsolation {
       match Self::parse_mem(stdout) {
         Ok(m) => {
           container.set_curr_mem_usage(m);
-          return m;
+          m
         },
         Err(e) => {
           error!(tid=%tid, error=%e, "Failed to parse memory value");
           container.mark_unhealthy();
-          return container.get_curr_mem_usage();
+          container.get_curr_mem_usage()
         },
-      };
+      }
     } else {
       error!(tid=%tid, output=?output, "Failed to run 'docker stats' with no exit code");
-      return container.get_curr_mem_usage();
+      container.get_curr_mem_usage()
     }
   }
 

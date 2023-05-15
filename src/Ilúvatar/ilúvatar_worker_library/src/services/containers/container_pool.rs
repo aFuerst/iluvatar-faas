@@ -114,7 +114,7 @@ impl ContainerPool {
     match self.pool.get_mut(container.fqdn()) {
       Some(mut pool_list) => {
         let pool_list = pool_list.value_mut();
-        let (pos, pool_len) = self.find_container_pos(&container, &pool_list);
+        let (pos, pool_len) = self.find_container_pos(container, pool_list);
         if pos < pool_len {
           debug!(tid=%tid, container_id=%container.container_id(), name=%self.pool_name, "Removing container from pool");
           self.len.fetch_sub(1, LEN_ORDERING);
@@ -135,7 +135,7 @@ impl ContainerPool {
         break;
       }
     }
-    return (pos, pool_len);
+    (pos, pool_len)
   }
 }
 

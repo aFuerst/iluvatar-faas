@@ -28,7 +28,7 @@ pub struct DockerContainer {
 }
 
 impl DockerContainer {
-  pub fn new(container_id: String, port: Port, address: String, _parallel_invokes: NonZeroU32, fqdn: &String, function: &Arc<RegisteredFunction>, invoke_timeout: u64, state: ContainerState, compute: Compute, device: Option<Arc<GPU>>,) -> Result<Self> {
+  pub fn new(container_id: String, port: Port, address: String, _parallel_invokes: NonZeroU32, fqdn: &str, function: &Arc<RegisteredFunction>, invoke_timeout: u64, state: ContainerState, compute: Compute, device: Option<Arc<GPU>>,) -> Result<Self> {
     let client = match reqwest::Client::builder()
       .pool_max_idle_per_host(0)
       .pool_idle_timeout(None)
@@ -40,8 +40,8 @@ impl DockerContainer {
       };
     let r = DockerContainer {
       mem_usage: RwLock::new(function.memory),
-      container_id: container_id,
-      fqdn: fqdn.clone(),
+      container_id,
+      fqdn: fqdn.to_owned(),
       function: function.clone(),
       last_used: RwLock::new(SystemTime::now()),
       invocations: Mutex::new(0),
@@ -58,7 +58,7 @@ impl DockerContainer {
 #[tonic::async_trait]
 impl ContainerT for DockerContainer {
   #[tracing::instrument(skip(self, json_args), fields(tid=%tid), name="DockerContainer::invoke")]
-  async fn invoke(&self, json_args: &String, tid: &TransactionId) ->  Result<(ParsedResult, Duration)> {
+  async fn invoke(&self, json_args: &str, tid: &TransactionId) ->  Result<(ParsedResult, Duration)> {
     *self.invocations.lock() += 1;
     self.touch();
     let build = self.client.post(&self.invoke_uri)

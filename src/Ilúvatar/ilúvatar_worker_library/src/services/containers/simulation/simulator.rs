@@ -30,7 +30,7 @@ impl ContainerIsolationService for SimulatorIsolation {
   /// creates and starts the entrypoint for a container based on the given image
   /// Run inside the specified namespace
   /// returns a new, unique ID representing it
-  async fn run_container(&self, fqdn: &String, image_name: &String, _parallel_invokes: u32, namespace: &str, mem_limit_mb: MemSizeMb, cpus: u32, reg: &Arc<RegisteredFunction>, iso: Isolation, compute: Compute, device_resource: Option<Arc<crate::services::resources::gpu::GPU>>, tid: &TransactionId) -> Result<Container> {
+  async fn run_container(&self, fqdn: &str, image_name: &str, _parallel_invokes: u32, namespace: &str, mem_limit_mb: MemSizeMb, cpus: u32, reg: &Arc<RegisteredFunction>, iso: Isolation, compute: Compute, device_resource: Option<Arc<crate::services::resources::gpu::GPU>>, tid: &TransactionId) -> Result<Container> {
     let cid = format!("{}-{}", fqdn, GUID::rand());
     Ok(Arc::new(SimulatorContainer::new(cid, fqdn, reg, ContainerState::Cold, iso, compute, device_resource)))
   }
@@ -41,7 +41,7 @@ impl ContainerIsolationService for SimulatorIsolation {
   }
 
   /// Read through an image's digest to find it's snapshot base
-  async fn prepare_function_registration(&self, rf: &mut RegisteredFunction, _fqdn: &String, _tid: &TransactionId) -> Result<()> {
+  async fn prepare_function_registration(&self, rf: &mut RegisteredFunction, _fqdn: &str, _tid: &TransactionId) -> Result<()> {
     Ok(())
   }
   
@@ -54,7 +54,7 @@ impl ContainerIsolationService for SimulatorIsolation {
   }
 
   fn update_memory_usage_mb(&self, container: &Container, tid: &TransactionId) -> MemSizeMb {
-    let cast_container = match crate::services::containers::structs::cast::<SimulatorContainer>(&container, tid) {
+    let cast_container = match crate::services::containers::structs::cast::<SimulatorContainer>(container, tid) {
       Ok(c) => c,
       Err(e) => { 
         warn!(tid=%tid, error=%e, "Error casting container to SimulatorContainer");

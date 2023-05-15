@@ -41,7 +41,7 @@ impl InvokerCpuQueuePolicy for AvailableScalingQueue {
     let r = self.invoke_queue.lock();
     let r = r.peek()?;
     let r = r.item.clone();
-    return Some(r);
+    Some(r)
   }
   fn pop_queue(&self) -> Arc<EnqueuedInvocation> {
     let mut invoke_queue = self.invoke_queue.lock();
@@ -63,7 +63,7 @@ impl InvokerCpuQueuePolicy for AvailableScalingQueue {
     };
     *self.est_time.lock() += priority;
     let mut queue = self.invoke_queue.lock();
-    queue.push(MinHeapEnqueuedInvocation::new_f(item.clone(), priority, priority).into());
+    queue.push(MinHeapEnqueuedInvocation::new_f(item.clone(), priority, priority));
     debug!(tid=%item.tid,  component="minheap", "Added item to front of queue minheap - len: {} arrived: {} top: {} ", 
                         queue.len(),
                         item.registration.fqdn,
