@@ -1,0 +1,8 @@
+language: rust
+sudo: false
+
+
+script:
+  - cd src/Ilúvatar
+  - cargo build
+  - cargo fmt --all -- --check
