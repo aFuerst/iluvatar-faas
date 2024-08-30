@@ -85,6 +85,10 @@ pub struct GpuStatus {
     pub num_running: u32,
     /// Estimated utilization manually tracked by service to account for newly launched functions
     pub est_utilization_gpu: f64,
+    #[serde(default)]
+    pub on_device_allocated: MemSizeMb,
+    #[serde(default)]
+    pub total_allocated: MemSizeMb
 }
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub struct GpuParseStatus {
@@ -108,7 +112,7 @@ pub struct GpuParseStatus {
     pub power_limit: f64,
 }
 impl GpuStatus {
-    pub fn update(&mut self, new_status: GpuParseStatus, num_running: u32) {
+    pub fn update(&mut self, new_status: GpuParseStatus, num_running: u32, on_device_allocated: MemSizeMb, total_allocated: MemSizeMb) {
         let alpha = 0.6;
         self.pstate = new_status.pstate;
         self.instant_utilization_gpu = new_status.utilization_gpu;
@@ -118,6 +122,8 @@ impl GpuStatus {
         self.power_draw = Self::moving_avg_f(alpha, self.power_draw, new_status.power_draw);
         self.num_running = num_running;
         self.est_utilization_gpu = self.utilization_gpu;
+        self.on_device_allocated = on_device_allocated;
+        self.total_allocated = total_allocated;
     }
     fn moving_avg_f(alpha: f64, old: f64, new: f64) -> f64 {
         (new * alpha) + (old * (1.0 - alpha))
@@ -140,6 +146,8 @@ impl From<GpuParseStatus> for GpuStatus {
             power_limit: val.power_limit,
             num_running: 0,
             est_utilization_gpu: val.utilization_gpu,
+            on_device_allocated: 0,
+            total_allocated: 0,
         }
     }
 }
@@ -314,6 +322,8 @@ impl GpuResourceTracker {
                     power_limit: 0.0,
                     num_running: 0,
                     est_utilization_gpu: 0.0,
+                    on_device_allocated: 0,
+                    total_allocated: 0,
                 });
             }
 
@@ -808,7 +818,15 @@ impl GpuResourceTracker {
                                 } else {
                                     0
                                 };
-                                stat.update(rec, running);
+                                let (on_device_allocated, total_allocated) = match svc.gpu_metadata.get(&(i as PrivateGpuId)) {
+                                    None => (0,0),
+                                    Some(meta) => {
+                                        let allocations: MemSizeMb = meta.allocation_breakdown.lock().iter().sum();
+                                        // allocations;
+                                        (*meta.device_allocated_memory.read(), allocations)
+                                    }
+                                };
+                                stat.update(rec, running, on_device_allocated, total_allocated);
                                 break;
                             }
                         }
@@ -851,6 +869,13 @@ impl GpuResourceTracker {
             if is_empty {
                 ret.push(stat.into());
             } else {
+                let (on_device_allocated, total_allocated) = match svc.gpu_metadata.get(&(i as PrivateGpuId)) {
+                    None => (0,0),
+                    Some(meta) => {
+                        let allocations: MemSizeMb = meta.allocation_breakdown.lock().iter().sum();
+                        (*meta.device_allocated_memory.read(), allocations)
+                    }
+                };
                 let mut lck = svc.status_info.write();
                 if lck.len() > i as usize {
                     let running = if let Some(meta) = svc.gpu_metadata.get(&i) {
@@ -858,7 +883,7 @@ impl GpuResourceTracker {
                     } else {
                         0
                     };
-                    lck[i as usize].update(stat, running);
+                    lck[i as usize].update(stat, running, on_device_allocated, total_allocated);
                 }
             }
         }
@@ -885,6 +910,8 @@ impl GpuResourceTracker {
                 instant_utilization_gpu: 0.0,
                 est_utilization_gpu: 0.0,
                 num_running: metadata.max_running - metadata.sem.available_permits() as u32,
+                total_allocated: 0,
+                on_device_allocated: 0,
             };
             status.push(stat);
         }
@@ -941,9 +968,9 @@ impl GpuResourceTracker {
             }
         }
     }
-    pub fn memory_pressure(&self, gpu: &GPU) -> (MemSizeMb,MemSizeMb) {
+    pub fn memory_pressure(&self, gpu: &GPU) -> (MemSizeMb, MemSizeMb) {
         match self.gpu_metadata.get(&gpu.gpu_hardware_id) {
-            None => (0,0),
+            None => (0, 0),
             Some(meta) => {
                 let curr = *meta.device_allocated_memory.read();
                 (curr, meta.hardware_memory_mb)

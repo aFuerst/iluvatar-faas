@@ -81,7 +81,12 @@ impl ContainerT for DockerContainer {
         *self.invocations.lock() += 1;
         self.touch();
         match self.client.invoke(json_args, tid, &self.container_id).await {
-            Ok(r) => Ok(r),
+            Ok((res, d)) => {
+                if let Some(g) = self.device.write().as_mut() {
+                    g.allocated_mb = res.gpu_allocation_mb;
+                }
+                Ok((res, d))
+            }
             Err(e) => {
                 warn!(tid=%tid, container_id=%self.container_id(), "Marking container unhealthy");
                 self.mark_unhealthy();

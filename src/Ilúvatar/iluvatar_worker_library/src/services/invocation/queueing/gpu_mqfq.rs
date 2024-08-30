@@ -545,11 +545,15 @@ impl MQFQ {
                 q.mark_completed();
                 let state = q.state;
                 drop(q);
-                if state != MQState::Active {
-                    if let Some(ctr) = container {
-                        if self.gpu_config.send_driver_memory_hints() {
-                            tokio::spawn(ContainerManager::move_off_device(ctr, item.invoke.tid.clone()));
+                if let Some(ctr) = container {
+                    if let Some(gpu) = ctr.device_resource().as_ref() {
+                        self.gpu.update_usage(gpu);
+                    }
+                    if state != MQState::Active && self.gpu_config.send_driver_memory_hints() {
+                        if let Some(gpu) = ctr.device_resource().as_ref() {
+                            self.gpu.remove(gpu);
                         }
+                        tokio::spawn(ContainerManager::move_off_device(ctr, item.invoke.tid.clone()));
                     }
                 }
             }
@@ -598,6 +602,9 @@ impl MQFQ {
                 if self.gpu_config.send_driver_memory_hints() {
                     let ctr = n.container.clone();
                     let t = tid.clone();
+                    if let Some(gpu) = ctr.device_resource().as_ref() {
+                        self.gpu.add(gpu);
+                    }
                     tokio::spawn(ContainerManager::move_to_device(ctr, t));
                 }
                 n
