@@ -32,6 +32,14 @@ lto=false
 incremental=true
 strip=false
 
+[profile.dev.package."*"]
+opt-level=0
+debug=2
+debug-assertions=true
+overflow-checks=true
+incremental=true
+strip=false
+
 [profile.release]
 opt-level=3
 codegen-units=4

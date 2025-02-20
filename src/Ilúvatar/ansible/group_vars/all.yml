@@ -3,6 +3,11 @@ mode: deploy
 target: release
 cluster: false
 
+flame_graph:
+  __flame: "{{ flame | default(false) }}"
+  __flame_bin: "{{ flame_bin | default('/tmp/flame_bin') }}"
+  __flame_svg: "{{ flame_svg | default('/tmp/flamegraph.svg') }}"
+
 controller:
   bin_name: "iluvatar_controller"
   config_name: "controller.json"

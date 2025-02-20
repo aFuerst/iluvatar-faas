@@ -69,7 +69,7 @@
     run_once: true
 
   - name: Kill running worker process distrib
-    shell: "kill -9 {{ item }}"
+    shell: "kill -INT {{ item }}"
     when: (ansible_host != "127.0.0.1" and ansible_host != "localhost") and mode == "clean"
     with_items: "{{ running_worker.stdout_lines }}"
     become: yes
@@ -119,7 +119,40 @@
     run_once: true
     debug:
       msg: "{{ worker_output }}"
-      
+
+  - name: Get running worker process for perf attach
+    shell: "ps -ef | grep -v grep | grep -w {{ worker.bin_name }} | awk '{print $2}'"
+    register: running_worker
+    when: mode == "deploy" and flame_graph.__flame
+
+  - name: Start flamegraph
+    ansible.builtin.command:
+      argv:
+        - "{{ flame_graph.__flame_bin }}"
+        - -o
+        - "{{ flame_graph.__flame_svg }}"
+        - --pid
+        - "{{ item }}"
+        - -c
+        - "record -g --call-graph dwarf,16384"
+#        - --no-inline
+    #        - -F
+    #        - "10000"
+    with_items: "{{ running_worker.stdout_lines }}"
+    environment:
+      - "PATH": "/home/alfuerst/.cargo/bin:/home/alfuerst/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin:/home/alfuerst/.bin/rustrover/bin:/home/alfuerst/.bin/"
+    when: mode == "deploy" and flame_graph.__flame
+    become: yes
+    async: 2592000               # 60*60*24*30 – 1 month
+    poll: 0
+    register: flame_output
+
+  - name: flame_output print
+    run_once: true
+    when: mode == "deploy" and flame_graph.__flame
+    debug:
+      msg: "{{ flame_output }}"
+
   - name: run worker executable through perf
     ansible.builtin.command: 
       argv: 

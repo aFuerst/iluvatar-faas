@@ -53,6 +53,10 @@ pub struct DockerConfig {
     /// Pulls it if missing.
     /// Can skip pulling updated version of a tag, but saves time & avoids rate limiting.
     pub avoid_pull: bool,
+    #[serde(default)]
+    /// Use pgrep to find container pid mapping.
+    /// Used for some low-level scheduling.
+    pub map_child_pid: bool,
 }
 
 #[derive(Debug)]

@@ -45,7 +45,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -64,6 +64,8 @@ pub struct BGPacket {
 
 #[derive(Debug)]
 #[allow(dead_code)]
+/// A service to handle the low-level details of containerd container lifecycles:
+///   creation, destruction, pulling images, etc
 pub struct ContainerdIsolation {
     channel: Option<Channel>,
     namespace_manager: Arc<NamespaceManager>,
@@ -72,12 +74,10 @@ pub struct ContainerdIsolation {
     docker_config: Option<DockerConfig>,
     downloaded_images: Arc<DashMap<String, bool>>,
     creation_sem: Option<tokio::sync::Semaphore>,
-    tx: Arc<SyncSender<BGPacket>>,
-    bg_workqueue: thread::JoinHandle<Result<()>>,
+    tx: Option<Arc<SyncSender<BGPacket>>>,
+    bg_workqueue: Option<thread::JoinHandle<Result<()>>>,
 }
 
-/// A service to handle the low-level details of containerd container lifecycles:
-///   creation, destruction, pulling images, etc
 impl ContainerdIsolation {
     pub async fn supported(tid: &TransactionId) -> bool {
         let channel = match containerd_client::connect(CONTAINERD_SOCK).await {
@@ -99,12 +99,38 @@ impl ContainerdIsolation {
     }
 
     fn send_bg_packet(&self, pid: u32, fqdn: &str, container_id: &str, tid: &TransactionId) {
-        let _ = self.tx.send(BGPacket {
-            pid,
-            fqdn: String::from(fqdn),
-            container_id: container_id.to_owned(),
-            tid: tid.clone(),
-        });
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(BGPacket {
+                pid,
+                fqdn: String::from(fqdn),
+                container_id: container_id.to_owned(),
+                tid: tid.clone(),
+            });
+        }
+    }
+
+    fn recv_bg_packet(rx: Option<Receiver<BGPacket>>) -> Option<thread::JoinHandle<Result<()>>> {
+        if let Some(rx) = rx {
+            return Some(thread::spawn(move || loop {
+                match rx.recv() {
+                    Ok(x) => {
+                        let ccpid = try_get_child_pid(x.pid, 1, 500);
+                        info!(
+                                  tid=%x.tid,
+                                  fqdn=%x.fqdn,
+                                  container_id=%x.container_id,
+                                  pid=%x.pid,
+                                  cpid=%ccpid,
+                                  "tag_pid_mapping"
+                        );
+                    },
+                    Err(e) => {
+                        bail_error!(error=%e, "ContainerdIsolation bg_workqueue receive channel broken!");
+                    },
+                }
+            }));
+        }
+        None
     }
 
     pub fn new(
@@ -118,7 +144,12 @@ impl ContainerdIsolation {
             i => Some(tokio::sync::Semaphore::new(i as usize)),
         };
 
-        let (send, recv) = sync_channel(30);
+        let (mut tx, mut rx) = (None, None);
+        if docker_config.as_ref().is_some_and(|c| c.map_child_pid) {
+            let (send, recv) = sync_channel(30);
+            tx = Some(Arc::new(send));
+            rx = Some(recv);
+        }
 
         ContainerdIsolation {
             // this is threadsafe if we clone channel
@@ -130,25 +161,8 @@ impl ContainerdIsolation {
             docker_config,
             downloaded_images: Arc::new(DashMap::new()),
             creation_sem: sem,
-            tx: Arc::new(send),
-            bg_workqueue: thread::spawn(move || loop {
-                match recv.recv() {
-                    Ok(x) => {
-                        let ccpid = try_get_child_pid(x.pid, 1, 500);
-                        info!(
-                                  tid=%x.tid,
-                                  fqdn=%x.fqdn,
-                                  container_id=%x.container_id,
-                                  pid=%x.pid,
-                                  cpid=%ccpid,
-                                  "tag_pid_mapping"
-                        );
-                    },
-                    Err(e) => {
-                        bail_error!(error=%e, "ContainerdIsolation background receive channel broken!");
-                    },
-                }
-            }),
+            tx: tx,
+            bg_workqueue: Self::recv_bg_packet(rx),
         }
     }
 
@@ -854,12 +868,7 @@ impl ContainerIsolationService for ContainerdIsolation {
             Ok(r) => {
                 debug!("Task {}: {:?} started", container.container_id, r);
                 container.task.running = true;
-                self.send_bg_packet(
-                    container.task.pid,
-                    fqdn,
-                    &container.task.container_id.clone().unwrap(),
-                    tid,
-                );
+                self.send_bg_packet(container.task.pid, fqdn, &container.container_id, tid);
                 Ok(Arc::new(container))
             },
             Err(e) => {

@@ -262,6 +262,11 @@ worker_kwargs = {
         ("container_resources", "docker_config", "avoid_pull"),
     ),
     (
+        "map_child_pid",
+        "false",
+        ("container_resources", "docker_config", "map_child_pid"),
+    ),
+    (
         "docker_username",
         "",
         ("container_resources", "docker_config", "auth", "username"),
@@ -276,6 +281,10 @@ worker_kwargs = {
         "",
         ("container_resources", "docker_config", "auth", "repository"),
     ),
+    # networking
+    ("net_namespace_pool", "true", ("networking", "use_pool")),
+    ("net_pool_size", "5", ("networking", "pool_size")),
+    ("net_pool_freq", "500", ("networking", "pool_freq_ms")),
     # logging
     ("log_level", "info", ("logging", "level")),
     ("worker_spanning", "NONE", ("logging", "spanning")),

@@ -1,6 +1,6 @@
 NPROCS:=$(shell grep -c ^processor /proc/cpuinfo)
 CROSS_FLAGS=CROSS_CONTAINER_UID=0 CROSS_CONTAINER_GID=0 CROSS_ROOTLESS_CONTAINER_ENGINE=false CROSS_CONTAINER_USER_NAMESPACE=none CROSS_CONTAINER_OPTS=--privileged
-RUST_FLAGS=-Dwarnings
+RUST_FLAGS="-Dwarnings -C force-frame-pointers=yes"
 # Jetson platform
 # TARGET_PLAT=aarch64-unknown-linux-gnu
 TARGET_PLAT?=x86_64-unknown-linux-gnu
@@ -28,8 +28,7 @@ release:
 	@echo "Building release"
 	@RUSTFLAGS=$(RUST_FLAGS) $(RUST_C) build $(RELEASE_FLAGS) --release $(CARGO_ARGS)
 tiny:
-# https://github.com/johnthagen/min-sized-rust
-#
+	@# https://github.com/johnthagen/min-sized-rust
 	@echo "Building tiny version"
 	@rustup toolchain install nightly
 	@rustup component add rust-src --toolchain nightly

@@ -28,7 +28,7 @@ parser.add_argument(
 )
 script_args = parser.parse_args()
 
-build_level = BuildTarget.RELEASE
+build_level = BuildTarget.DEBUG
 # build the solution
 rust_build(ILU_HOME, None, build_level)
 
@@ -59,7 +59,8 @@ def run_scaling(threads, server):
     with open(log_file, "w") as log:
         pre_run_cleanup(log, out_dir, **kwargs)
         try:
-            run_ansible(log, **kwargs)
+            p = os.path.join(out_dir, "flamegraph.svg")
+            run_ansible(log, ansible_args=["-e", "flame=true", "-e", f"flame_svg={p}", "-e", "flame_bin=/home/alfuerst/.cargo/bin/flamegraph"], **kwargs)
             bindir = os.path.join(
                 ILU_HOME, "target", "x86_64-unknown-linux-gnu", str(build_level)
             )
@@ -114,6 +115,7 @@ def run_scaling(threads, server):
 mx = multiprocessing.cpu_count()
 threads = list(range(1, multiprocessing.cpu_count(), mx // script_args.points))
 threads[-1] = mx
-for server in ["unix", "http"]:
-    for tds in threads:
+threads = [mx]
+for server in ["unix"]:
+    for tds in set(threads):
         run_scaling(tds, server)
